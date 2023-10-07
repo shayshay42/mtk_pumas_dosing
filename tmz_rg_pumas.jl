@@ -97,15 +97,16 @@ end_time = 28.0*5.0
 end_treat = 42.0
 tspan = (0.0, end_time+7.0) .* hours
 
-# tmz_treat_dosetimes = spaced_list(end_treat,1.0,0.0,0.0).*hours
-# tmz_adjuv_dosetimes = spaced_list(end_time,5.0,23.0,end_treat+28.0).*hours
-# rg_dosetimes = spaced_list(end_time-1.0,18.0,10.0,0.0).*hours
+tmz_treat_dosetimes = spaced_list(end_treat,1.0,0.0,0.0).*hours
+tmz_adjuv_dosetimes = spaced_list(end_time,5.0,23.0,end_treat+28.0).*hours
+rg_dosetimes = spaced_list(end_time-1.0,18.0,10.0,0.0).*hours
+inject_times = sort(unique([rg_dosetimes;tmz_treat_dosetimes;tmz_adjuv_dosetimes]))
 
-# #dose amounts
-# avg_human_surface_area = 1.7 #m^2
-# tmz_treat_dose = 75.0*avg_human_surface_area
-# tmz_adjuv_dose = 150.0*avg_human_surface_area
-# dose_amount = 1800.0*avg_human_surface_area
+#dose amounts
+avg_human_surface_area = 1.7 #m^2
+tmz_treat_dose = 75.0*avg_human_surface_area
+tmz_adjuv_dose = 150.0*avg_human_surface_area
+dose_amount = 1800.0*avg_human_surface_area
 
 # #affect function for the discontinuous events
 # function tmz_dose!(integ, u, p, ctx)
@@ -121,7 +122,7 @@ tspan = (0.0, end_time+7.0) .* hours
 #     integ.u[u.AbsRG] += integ.p[end][end][ctx[integ.t]]
 # end
 
-# doses = ones(length(rg_dosetimes)).*dose_amount
+doses = ones(length(rg_dosetimes)).*dose_amount
 # time_dose_map = Dict(zip(rg_dosetimes, Int64.(1:length(rg_dosetimes))))
 # rg_treat = rg_dosetimes => (rg_dose!, [AbsRG], [dose_vector], time_dose_map)
 
@@ -199,17 +200,25 @@ prob = ODEProblem(simp)
 # ForwardDiff.gradient(θ -> loss(θ, ode_params), doses)
 # @btime ForwardDiff.gradient(θ -> loss(θ, ode_params), doses)
 
-
-
-
 sol = solve(prob)
-
-@unpack AbsTMZ = osys
-tmz_dose = Bolus(AbsTMZ, 75.0, 24.0)
-
-trial = Trial(simp; u0=u0, p=p, tspan=tspan, doses = [tmz_dose])
-prob = InverseProblem(trial, prob, [])
-sol = simulate(trial, prob)
 plot(sol)
 
-ModelingToolkit.get_states(simp)
+@unpack AbsTMZ = simp
+tmz_treat = [Bolus(AbsTMZ, tmz_treat_dose, time) for time in tmz_treat_dosetimes]
+tmz_adjuv = [Bolus(AbsTMZ, tmz_adjuv_dose, time) for time in tmz_adjuv_dosetimes]
+rg_treat = [Bolus(AbsRG, dose, time) for (time,dose) in zip(rg_dosetimes, doses)]
+
+# PeriodicBolus()
+
+function affect!(integrator)
+    SciMLBase.set_proposed_dt!(integrator, 0.01)
+end
+cb = PresetTimeCallback(inject_times, affect!)
+
+trial = Trial(simp; tspan=tspan, doses = [tmz_treat;tmz_adjuv;rg_treat], d_discontinuities=inject_times, callback=cb, dense=false)
+iprob = InverseProblem(trial, simp, [])
+soli = simulate(trial, iprob)
+@btime soli = simulate(trial, iprob)
+plotter(soli)
+
+# ModelingToolkit.get_states(simp)

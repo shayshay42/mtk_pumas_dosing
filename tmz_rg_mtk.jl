@@ -3,6 +3,7 @@ using OrdinaryDiffEq, Plots, DifferentialEquations
 using BenchmarkTools
 using ForwardDiff
 using Serialization
+using SciMLSensitivity
 
 # utils includes a function for creating dosing schedules (spaced_list) and a function for plotting the simulation (plotter)
 include("assets/utils.jl");
@@ -138,13 +139,15 @@ scale = scaler[1]
 doseit = ones(90).*1500.0
 part = [ode_params;[scale];[doseit]]
 prob=ODEProblem(simp, u0, tspan, part) #jac=true errors
-# sol = solve(prob)
+
+inject_times = sort(unique([rg_dosetimes;tmz_treat_dosetimes;tmz_adjuv_dosetimes]))
+@btime sol = solve(prob, dense=false, d_discontinuities=inject_times)
 # plotter(sol)
 
 # loss function balances the tumor auc and drug auc
 function loss(θ,params)
     int_prob = remake(prob, p=(params[1:end-1],[params[end],θ]))
-    int_sol = solve(int_prob)
+    int_sol = solve(int_prob, AutoTsit5(KenCarp4()), dense=false, d_discontinuities=inject_times, sensealg=ForwardDiffSensitivity(convert_tspan=true))
     cell = (int_sol[9,end]- params[end][1])/( params[end][2]- params[end][1])
     drug = (int_sol[10,end]- params[end][3])/( params[end][4]- params[end][3])
     return cell + drug

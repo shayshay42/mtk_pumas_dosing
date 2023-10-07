@@ -95,3 +95,26 @@ function spaced_list(p, n, m, b=1)
   return spaced_list
 end
 
+
+"""
+    trapezoidal_rule(t, y)
+
+Calculate the area under a curve defined by `x` and `y` coordinates using the trapezoidal rule. This numerical integration method works by approximating the region under the curve as a series of trapezoids and then calculating the sum of their areas.
+
+# Arguments
+- `t::Vector`: A vector of `x` values (time points) in ascending order.
+- `y::Vector`: A vector of `y` values (concentration levels) corresponding to each `x` value.
+
+# Returns
+- `Float`: The approximate area under the curve, as calculated by the trapezoidal rule.
+
+# Example
+```julia
+julia> t = 0:0.1:1;
+julia> y = t.^2;
+julia> trapezoidal_rule(t, y)
+0.33000000000000007
+"""
+function trapez(t, y)
+  return 0.5*dot((t[2:end] - t[1:end-1]), (y[1:end-1] + y[2:end]))
+end
